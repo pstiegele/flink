@@ -51,11 +51,14 @@ import org.apache.flink.runtime.state.VoidNamespaceSerializer;
 import org.apache.flink.runtime.state.internal.InternalAppendingState;
 import org.apache.flink.runtime.state.internal.InternalListState;
 import org.apache.flink.runtime.state.internal.InternalMergingState;
+import org.apache.flink.streaming.api.datastream.CoGroupedStreams;
+import org.apache.flink.streaming.api.datastream.JoinedStreams;
 import org.apache.flink.streaming.api.operators.AbstractUdfStreamOperator;
 import org.apache.flink.streaming.api.operators.ChainingStrategy;
 import org.apache.flink.streaming.api.operators.InternalTimer;
 import org.apache.flink.streaming.api.operators.InternalTimerService;
 import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
+import org.apache.flink.streaming.api.operators.StreamMonitor;
 import org.apache.flink.streaming.api.operators.TimestampedCollector;
 import org.apache.flink.streaming.api.operators.Triggerable;
 import org.apache.flink.streaming.api.windowing.assigners.BaseAlignedWindowAssigner;
@@ -64,12 +67,14 @@ import org.apache.flink.streaming.api.windowing.assigners.WindowAssigner;
 import org.apache.flink.streaming.api.windowing.triggers.Trigger;
 import org.apache.flink.streaming.api.windowing.triggers.TriggerResult;
 import org.apache.flink.streaming.api.windowing.windows.Window;
+import org.apache.flink.streaming.runtime.operators.windowing.functions.InternalIterableWindowFunction;
 import org.apache.flink.streaming.runtime.operators.windowing.functions.InternalWindowFunction;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.util.OutputTag;
 
 import java.io.Serializable;
 import java.util.Collection;
+import java.util.HashMap;
 
 import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.apache.flink.util.Preconditions.checkNotNull;
@@ -104,21 +109,12 @@ public class WindowOperator<K, IN, ACC, OUT, W extends Window>
     // ------------------------------------------------------------------------
     // Configuration values and user functions
     // ------------------------------------------------------------------------
-
+    private static final String LATE_ELEMENTS_DROPPED_METRIC_NAME = "numLateRecordsDropped";
     protected final WindowAssigner<? super IN, W> windowAssigner;
-
-    private final KeySelector<IN, K> keySelector;
-
-    private final Trigger<? super IN, ? super W> trigger;
-
-    private final StateDescriptor<? extends AppendingState<IN, ACC>, ?> windowStateDescriptor;
-
     /** For serializing the key in checkpoints. */
     protected final TypeSerializer<K> keySerializer;
-
     /** For serializing the window in checkpoints. */
     protected final TypeSerializer<W> windowSerializer;
-
     /**
      * The allowed lateness for elements. This is used for:
      *
@@ -129,7 +125,6 @@ public class WindowOperator<K, IN, ACC, OUT, W extends Window>
      * </ul>
      */
     protected final long allowedLateness;
-
     /**
      * {@link OutputTag} to use for late arriving events. Elements for which {@code
      * window.maxTimestamp + allowedLateness} is smaller than the current watermark will be emitted
@@ -137,26 +132,16 @@ public class WindowOperator<K, IN, ACC, OUT, W extends Window>
      */
     protected final OutputTag<IN> lateDataOutputTag;
 
-    private static final String LATE_ELEMENTS_DROPPED_METRIC_NAME = "numLateRecordsDropped";
+    private final KeySelector<IN, K> keySelector;
+    private final Trigger<? super IN, ? super W> trigger;
+    private final StateDescriptor<? extends AppendingState<IN, ACC>, ?> windowStateDescriptor;
+    private final HashMap<String, Object> description;
 
     protected transient Counter numLateRecordsDropped;
 
     // ------------------------------------------------------------------------
     // State that is not checkpointed
     // ------------------------------------------------------------------------
-
-    /** The state in which the window contents is stored. Each window is a namespace */
-    private transient InternalAppendingState<K, W, IN, ACC, ACC> windowState;
-
-    /**
-     * The {@link #windowState}, typed to merging state for merging windows. Null if the window
-     * state is not mergeable.
-     */
-    private transient InternalMergingState<K, W, IN, ACC, ACC> windowMergingState;
-
-    /** The state that holds the merging window metadata (the sets that describe what is merged). */
-    private transient InternalListState<K, VoidNamespace, Tuple2<W, W>> mergingSetsState;
-
     /**
      * This is given to the {@code InternalWindowFunction} for emitting elements with a given
      * timestamp.
@@ -164,16 +149,46 @@ public class WindowOperator<K, IN, ACC, OUT, W extends Window>
     protected transient TimestampedCollector<OUT> timestampedCollector;
 
     protected transient Context triggerContext = new Context(null, null);
-
     protected transient WindowContext processContext;
-
     protected transient WindowAssigner.WindowAssignerContext windowAssignerContext;
+    protected transient InternalTimerService<W> internalTimerService;
+    /** The state in which the window contents is stored. Each window is a namespace */
+    private transient InternalAppendingState<K, W, IN, ACC, ACC> windowState;
+    /**
+     * The {@link #windowState}, typed to merging state for merging windows. Null if the window
+     * state is not mergeable.
+     */
+    private transient InternalMergingState<K, W, IN, ACC, ACC> windowMergingState;
+    /** The state that holds the merging window metadata (the sets that describe what is merged). */
+    private transient InternalListState<K, VoidNamespace, Tuple2<W, W>> mergingSetsState;
 
     // ------------------------------------------------------------------------
     // State that needs to be checkpointed
     // ------------------------------------------------------------------------
+    private StreamMonitor streamMonitor;
 
-    protected transient InternalTimerService<W> internalTimerService;
+    public WindowOperator(
+            WindowAssigner<? super IN, W> windowAssigner,
+            TypeSerializer<W> windowSerializer,
+            KeySelector<IN, K> keySelector,
+            TypeSerializer<K> keySerializer,
+            StateDescriptor<? extends AppendingState<IN, ACC>, ?> windowStateDescriptor,
+            InternalWindowFunction<ACC, OUT, K, W> windowFunction,
+            Trigger<? super IN, ? super W> trigger,
+            long allowedLateness,
+            OutputTag<IN> lateDataOutputTag) {
+        this(
+                windowAssigner,
+                windowSerializer,
+                keySelector,
+                keySerializer,
+                windowStateDescriptor,
+                windowFunction,
+                trigger,
+                allowedLateness,
+                lateDataOutputTag,
+                null);
+    }
 
     /** Creates a new {@code WindowOperator} based on the given policies and user functions. */
     public WindowOperator(
@@ -185,7 +200,8 @@ public class WindowOperator<K, IN, ACC, OUT, W extends Window>
             InternalWindowFunction<ACC, OUT, K, W> windowFunction,
             Trigger<? super IN, ? super W> trigger,
             long allowedLateness,
-            OutputTag<IN> lateDataOutputTag) {
+            OutputTag<IN> lateDataOutputTag,
+            HashMap<String, Object> description) {
 
         super(windowFunction);
 
@@ -211,6 +227,25 @@ public class WindowOperator<K, IN, ACC, OUT, W extends Window>
         this.trigger = checkNotNull(trigger);
         this.allowedLateness = allowedLateness;
         this.lateDataOutputTag = lateDataOutputTag;
+        this.description = description;
+        try {
+            if (this.description == null) {
+                this.streamMonitor =
+                        ((JoinedStreams.JoinCoGroupFunction)
+                                        ((CoGroupedStreams.CoGroupWindowFunction)
+                                                        ((InternalIterableWindowFunction)
+                                                                        this.getUserFunction())
+                                                                .getWrappedFunction())
+                                                .getWrappedFunction())
+                                .streamMonitor;
+                this.streamMonitor.reportJoinWindowOperator(this);
+            } else {
+                this.streamMonitor = new StreamMonitor(this.description, this);
+            }
+
+        } catch (Exception e) {
+            System.err.println("StreamMonitor init in WindowOperator failed: " + e.getMessage());
+        }
 
         setChainingStrategy(ChainingStrategy.ALWAYS);
     }
@@ -289,6 +324,10 @@ public class WindowOperator<K, IN, ACC, OUT, W extends Window>
 
     @Override
     public void processElement(StreamRecord<IN> element) throws Exception {
+        try {
+            this.streamMonitor.reportInput(element.getValue(), getExecutionConfig());
+        } catch (Exception ignored) {
+        }
         final Collection<W> elementWindows =
                 windowAssigner.assignWindows(
                         element.getValue(), element.getTimestamp(), windowAssignerContext);
@@ -567,6 +606,14 @@ public class WindowOperator<K, IN, ACC, OUT, W extends Window>
         processContext.window = window;
         userFunction.process(
                 triggerContext.key, window, processContext, contents, timestampedCollector);
+        try {
+            this.streamMonitor.reportWindowLength(windowState.getInternal());
+            if (description != null) {
+                this.streamMonitor.reportOutput(contents);
+            }
+        } catch (Exception ignored) {
+
+        }
     }
 
     /**
@@ -671,6 +718,80 @@ public class WindowOperator<K, IN, ACC, OUT, W extends Window>
         return time == cleanupTime(window);
     }
 
+    @VisibleForTesting
+    public Trigger<? super IN, ? super W> getTrigger() {
+        return trigger;
+    }
+
+    @VisibleForTesting
+    public KeySelector<IN, K> getKeySelector() {
+        return keySelector;
+    }
+
+    @VisibleForTesting
+    public WindowAssigner<? super IN, W> getWindowAssigner() {
+        return windowAssigner;
+    }
+
+    @VisibleForTesting
+    public StateDescriptor<? extends AppendingState<IN, ACC>, ?> getStateDescriptor() {
+        return windowStateDescriptor;
+    }
+
+    /** Internal class for keeping track of in-flight timers. */
+    protected static class Timer<K, W extends Window> implements Comparable<Timer<K, W>> {
+        protected long timestamp;
+        protected K key;
+        protected W window;
+
+        public Timer(long timestamp, K key, W window) {
+            this.timestamp = timestamp;
+            this.key = key;
+            this.window = window;
+        }
+
+        @Override
+        public int compareTo(Timer<K, W> o) {
+            return Long.compare(this.timestamp, o.timestamp);
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) {
+                return true;
+            }
+            if (o == null || getClass() != o.getClass()) {
+                return false;
+            }
+
+            Timer<?, ?> timer = (Timer<?, ?>) o;
+
+            return timestamp == timer.timestamp
+                    && key.equals(timer.key)
+                    && window.equals(timer.window);
+        }
+
+        @Override
+        public int hashCode() {
+            int result = (int) (timestamp ^ (timestamp >>> 32));
+            result = 31 * result + key.hashCode();
+            result = 31 * result + window.hashCode();
+            return result;
+        }
+
+        @Override
+        public String toString() {
+            return "Timer{"
+                    + "timestamp="
+                    + timestamp
+                    + ", key="
+                    + key
+                    + ", window="
+                    + window
+                    + '}';
+        }
+    }
+
     /**
      * Base class for per-window {@link KeyedStateStore KeyedStateStores}. Used to allow per-window
      * state access for {@link
@@ -687,6 +808,10 @@ public class WindowOperator<K, IN, ACC, OUT, W extends Window>
             super(keyedStateBackend, executionConfig);
         }
     }
+
+    // ------------------------------------------------------------------------
+    // Getters for testing
+    // ------------------------------------------------------------------------
 
     /**
      * Special {@link AbstractPerWindowStateStore} that doesn't allow access to per-window state.
@@ -948,83 +1073,5 @@ public class WindowOperator<K, IN, ACC, OUT, W extends Window>
         public String toString() {
             return "Context{" + "key=" + key + ", window=" + window + '}';
         }
-    }
-
-    /** Internal class for keeping track of in-flight timers. */
-    protected static class Timer<K, W extends Window> implements Comparable<Timer<K, W>> {
-        protected long timestamp;
-        protected K key;
-        protected W window;
-
-        public Timer(long timestamp, K key, W window) {
-            this.timestamp = timestamp;
-            this.key = key;
-            this.window = window;
-        }
-
-        @Override
-        public int compareTo(Timer<K, W> o) {
-            return Long.compare(this.timestamp, o.timestamp);
-        }
-
-        @Override
-        public boolean equals(Object o) {
-            if (this == o) {
-                return true;
-            }
-            if (o == null || getClass() != o.getClass()) {
-                return false;
-            }
-
-            Timer<?, ?> timer = (Timer<?, ?>) o;
-
-            return timestamp == timer.timestamp
-                    && key.equals(timer.key)
-                    && window.equals(timer.window);
-        }
-
-        @Override
-        public int hashCode() {
-            int result = (int) (timestamp ^ (timestamp >>> 32));
-            result = 31 * result + key.hashCode();
-            result = 31 * result + window.hashCode();
-            return result;
-        }
-
-        @Override
-        public String toString() {
-            return "Timer{"
-                    + "timestamp="
-                    + timestamp
-                    + ", key="
-                    + key
-                    + ", window="
-                    + window
-                    + '}';
-        }
-    }
-
-    // ------------------------------------------------------------------------
-    // Getters for testing
-    // ------------------------------------------------------------------------
-
-    @VisibleForTesting
-    public Trigger<? super IN, ? super W> getTrigger() {
-        return trigger;
-    }
-
-    @VisibleForTesting
-    public KeySelector<IN, K> getKeySelector() {
-        return keySelector;
-    }
-
-    @VisibleForTesting
-    public WindowAssigner<? super IN, W> getWindowAssigner() {
-        return windowAssigner;
-    }
-
-    @VisibleForTesting
-    public StateDescriptor<? extends AppendingState<IN, ACC>, ?> getStateDescriptor() {
-        return windowStateDescriptor;
     }
 }
