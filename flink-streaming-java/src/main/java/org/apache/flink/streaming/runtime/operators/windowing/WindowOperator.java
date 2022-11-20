@@ -51,11 +51,14 @@ import org.apache.flink.runtime.state.VoidNamespaceSerializer;
 import org.apache.flink.runtime.state.internal.InternalAppendingState;
 import org.apache.flink.runtime.state.internal.InternalListState;
 import org.apache.flink.runtime.state.internal.InternalMergingState;
+import org.apache.flink.streaming.api.datastream.CoGroupedStreams;
+import org.apache.flink.streaming.api.datastream.JoinedStreams;
 import org.apache.flink.streaming.api.operators.AbstractUdfStreamOperator;
 import org.apache.flink.streaming.api.operators.ChainingStrategy;
 import org.apache.flink.streaming.api.operators.InternalTimer;
 import org.apache.flink.streaming.api.operators.InternalTimerService;
 import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
+import org.apache.flink.streaming.api.operators.StreamMonitor;
 import org.apache.flink.streaming.api.operators.TimestampedCollector;
 import org.apache.flink.streaming.api.operators.Triggerable;
 import org.apache.flink.streaming.api.windowing.assigners.MergingWindowAssigner;
@@ -63,12 +66,14 @@ import org.apache.flink.streaming.api.windowing.assigners.WindowAssigner;
 import org.apache.flink.streaming.api.windowing.triggers.Trigger;
 import org.apache.flink.streaming.api.windowing.triggers.TriggerResult;
 import org.apache.flink.streaming.api.windowing.windows.Window;
+import org.apache.flink.streaming.runtime.operators.windowing.functions.InternalIterableWindowFunction;
 import org.apache.flink.streaming.runtime.operators.windowing.functions.InternalWindowFunction;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.util.OutputTag;
 
 import java.io.Serializable;
 import java.util.Collection;
+import java.util.HashMap;
 
 import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.apache.flink.util.Preconditions.checkNotNull;
@@ -99,6 +104,9 @@ public class WindowOperator<K, IN, ACC, OUT, W extends Window>
         implements OneInputStreamOperator<IN, OUT>, Triggerable<K, W> {
 
     private static final long serialVersionUID = 1L;
+    //Flink-Observation: description and StreamMonitor of WindowOperator
+    final HashMap<String, Object> description;
+    StreamMonitor streamMonitor;
 
     // ------------------------------------------------------------------------
     // Configuration values and user functions
@@ -175,6 +183,7 @@ public class WindowOperator<K, IN, ACC, OUT, W extends Window>
     protected transient InternalTimerService<W> internalTimerService;
 
     /** Creates a new {@code WindowOperator} based on the given policies and user functions. */
+    //Flink-Observation: added description to WindowOperator parameters
     public WindowOperator(
             WindowAssigner<? super IN, W> windowAssigner,
             TypeSerializer<W> windowSerializer,
@@ -185,6 +194,20 @@ public class WindowOperator<K, IN, ACC, OUT, W extends Window>
             Trigger<? super IN, ? super W> trigger,
             long allowedLateness,
             OutputTag<IN> lateDataOutputTag) {
+        this(windowAssigner, windowSerializer, keySelector, keySerializer, windowStateDescriptor, windowFunction, trigger, allowedLateness, lateDataOutputTag, null);
+    }
+    //Flink-Observation: added description to WindowOperator parameters
+    public WindowOperator(
+            WindowAssigner<? super IN, W> windowAssigner,
+            TypeSerializer<W> windowSerializer,
+            KeySelector<IN, K> keySelector,
+            TypeSerializer<K> keySerializer,
+            StateDescriptor<? extends AppendingState<IN, ACC>, ?> windowStateDescriptor,
+            InternalWindowFunction<ACC, OUT, K, W> windowFunction,
+            Trigger<? super IN, ? super W> trigger,
+            long allowedLateness,
+            OutputTag<IN> lateDataOutputTag,
+            HashMap<String, Object> description) {
 
         super(windowFunction);
 
@@ -202,6 +225,27 @@ public class WindowOperator<K, IN, ACC, OUT, W extends Window>
         this.trigger = checkNotNull(trigger);
         this.allowedLateness = allowedLateness;
         this.lateDataOutputTag = lateDataOutputTag;
+
+        //Flink-Observation: assign description directly or try to grab description from join operator
+        this.description = description;
+        try {
+            if (this.description == null) {
+                this.streamMonitor =
+                        ((JoinedStreams.JoinCoGroupFunction)
+                                ((CoGroupedStreams.CoGroupWindowFunction)
+                                        ((InternalIterableWindowFunction)
+                                                this.getUserFunction())
+                                                .getWrappedFunction())
+                                        .getWrappedFunction())
+                                .streamMonitor;
+                this.streamMonitor.reportJoinWindowOperator(this);
+            } else {
+                this.streamMonitor = new StreamMonitor(this.description, this);
+            }
+
+        } catch (Exception e) {
+            System.err.println("StreamMonitor init in WindowOperator failed: " + e.getMessage());
+        }
 
         setChainingStrategy(ChainingStrategy.ALWAYS);
     }
@@ -280,6 +324,11 @@ public class WindowOperator<K, IN, ACC, OUT, W extends Window>
 
     @Override
     public void processElement(StreamRecord<IN> element) throws Exception {
+        //Flink-Observation: report input of window
+        try {
+            this.streamMonitor.reportInput(element.getValue(), getExecutionConfig());
+        } catch (Exception ignored) {
+        }
         final Collection<W> elementWindows =
                 windowAssigner.assignWindows(
                         element.getValue(), element.getTimestamp(), windowAssignerContext);
@@ -558,6 +607,13 @@ public class WindowOperator<K, IN, ACC, OUT, W extends Window>
         processContext.window = window;
         userFunction.process(
                 triggerContext.key, window, processContext, contents, timestampedCollector);
+        //Flink-Observation: report window length and output
+        try {
+            this.streamMonitor.reportWindowLength(windowState.getInternal());
+            if (description != null) {
+                this.streamMonitor.reportOutput(contents);
+            }
+        } catch (Exception ignored) {}
     }
 
     /**

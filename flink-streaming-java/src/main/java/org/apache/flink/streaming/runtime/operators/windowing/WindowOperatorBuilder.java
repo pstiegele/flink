@@ -57,6 +57,7 @@ import org.apache.flink.util.Preconditions;
 import javax.annotation.Nullable;
 
 import java.lang.reflect.Type;
+import java.util.HashMap;
 
 /**
  * A builder for creating {@link WindowOperator WindowOperators}.
@@ -180,11 +181,19 @@ public class WindowOperatorBuilder<T, K, W extends Window> {
                     stateDesc, new InternalSingleValueProcessWindowFunction<>(function));
         }
     }
-
+    //Flink-Observation: added aggregate() function with the original parameters (without description) to stay compatible
     public <ACC, V, R> WindowOperator<K, T, ?, R, W> aggregate(
             AggregateFunction<T, ACC, V> aggregateFunction,
             WindowFunction<V, R, K, W> windowFunction,
             TypeInformation<ACC> accumulatorType) {
+        return aggregate(aggregateFunction, windowFunction, accumulatorType, null);
+    }
+    //Flink-Observation: added description to aggregate() parameters
+    public <ACC, V, R> WindowOperator<K, T, ?, R, W> aggregate(
+            AggregateFunction<T, ACC, V> aggregateFunction,
+            WindowFunction<V, R, K, W> windowFunction,
+            TypeInformation<ACC> accumulatorType,
+            HashMap<String, Object> description) {
 
         Preconditions.checkNotNull(aggregateFunction, "AggregateFunction cannot be null");
         Preconditions.checkNotNull(windowFunction, "WindowFunction cannot be null");
@@ -206,14 +215,22 @@ public class WindowOperatorBuilder<T, K, W extends Window> {
                             accumulatorType.createSerializer(config));
 
             return buildWindowOperator(
-                    stateDesc, new InternalSingleValueWindowFunction<>(windowFunction));
+                    stateDesc, new InternalSingleValueWindowFunction<>(windowFunction), description);
         }
     }
-
+    //Flink-Observation: added aggregate() function with the original parameters (without description) to stay compatible
     public <ACC, V, R> WindowOperator<K, T, ?, R, W> aggregate(
             AggregateFunction<T, ACC, V> aggregateFunction,
             ProcessWindowFunction<V, R, K, W> windowFunction,
             TypeInformation<ACC> accumulatorType) {
+        return aggregate(aggregateFunction, windowFunction, accumulatorType, null);
+    }
+    //Flink-Observation: added description to aggregate() parameters
+    public <ACC, V, R> WindowOperator<K, T, ?, R, W> aggregate(
+            AggregateFunction<T, ACC, V> aggregateFunction,
+            ProcessWindowFunction<V, R, K, W> windowFunction,
+            TypeInformation<ACC> accumulatorType,
+            HashMap<String, Object> description) {
 
         Preconditions.checkNotNull(aggregateFunction, "AggregateFunction cannot be null");
         Preconditions.checkNotNull(windowFunction, "ProcessWindowFunction cannot be null");
@@ -235,7 +252,8 @@ public class WindowOperatorBuilder<T, K, W extends Window> {
                             accumulatorType.createSerializer(config));
 
             return buildWindowOperator(
-                    stateDesc, new InternalSingleValueProcessWindowFunction<>(windowFunction));
+                    stateDesc, new InternalSingleValueProcessWindowFunction<>(windowFunction),
+                    description);
         }
     }
 
@@ -261,10 +279,17 @@ public class WindowOperatorBuilder<T, K, W extends Window> {
             return buildWindowOperator(stateDesc, function);
         }
     }
-
+    //Flink-Observation: added buildWindowOperator() function with the original parameters (without description) to stay compatible
     private <ACC, R> WindowOperator<K, T, ACC, R, W> buildWindowOperator(
             StateDescriptor<? extends AppendingState<T, ACC>, ?> stateDesc,
             InternalWindowFunction<ACC, R, K, W> function) {
+        return buildWindowOperator(stateDesc, function, null);
+    }
+    //Flink-Observation: added description to buildWindowOperator() parameters
+    private <ACC, R> WindowOperator<K, T, ACC, R, W> buildWindowOperator(
+            StateDescriptor<? extends AppendingState<T, ACC>, ?> stateDesc,
+            InternalWindowFunction<ACC, R, K, W> function,
+            HashMap<String, Object> description) {
 
         return new WindowOperator<>(
                 windowAssigner,
@@ -275,11 +300,18 @@ public class WindowOperatorBuilder<T, K, W extends Window> {
                 function,
                 trigger,
                 allowedLateness,
-                lateDataOutputTag);
+                lateDataOutputTag,
+                description);
     }
-
+    //Flink-Observation: added buildEvictingWindowOperator() function with the original parameters (without description) to stay compatible
     private <R> WindowOperator<K, T, Iterable<T>, R, W> buildEvictingWindowOperator(
             InternalWindowFunction<Iterable<T>, R, K, W> function) {
+        return buildEvictingWindowOperator(function, null);
+    }
+    //Flink-Observation: added description to buildEvictingWindowOperator() parameters
+    private <R> WindowOperator<K, T, Iterable<T>, R, W> buildEvictingWindowOperator(
+            InternalWindowFunction<Iterable<T>, R, K, W> function,
+            HashMap<String, Object> description) {
         @SuppressWarnings({"unchecked", "rawtypes"})
         TypeSerializer<StreamRecord<T>> streamRecordSerializer =
                 (TypeSerializer<StreamRecord<T>>)
@@ -298,7 +330,8 @@ public class WindowOperatorBuilder<T, K, W extends Window> {
                 trigger,
                 evictor,
                 allowedLateness,
-                lateDataOutputTag);
+                lateDataOutputTag,
+                description);
     }
 
     private static String generateFunctionName(Function function) {

@@ -820,8 +820,8 @@ public class CoGroupedStreams<T1, T2> {
             }
         }
     }
-
-    private static class CoGroupWindowFunction<T1, T2, T, KEY, W extends Window>
+    //Flink-Observation: CoGroupWindowFunction is made public to be able to grab StreamMonitor from JoinedStream to the WindowOperator
+    public static class CoGroupWindowFunction<T1, T2, T, KEY, W extends Window>
             extends WrappingFunction<CoGroupFunction<T1, T2, T>>
             implements WindowFunction<TaggedUnion<T1, T2>, T, KEY, W> {
 
