@@ -693,12 +693,15 @@ public class DataStream<T> {
      * @param filter The FilterFunction that is called for each element of the DataStream.
      * @return The filtered DataStream.
      */
-    //Flink-Observation: added filter() function with the original parameters (without description) to stay compatible
+    // Flink-Observation: added filter() function with the original parameters (without description)
+    // to stay compatible
     public SingleOutputStreamOperator<T> filter(FilterFunction<T> filter) {
         return filter(filter, null);
     }
-    //Flink-Observation: added description to filter() parameters
-    public SingleOutputStreamOperator<T> filter(FilterFunction<T> filter, HashMap<String, Object> description) {
+
+    // Flink-Observation: added description to filter() parameters
+    public SingleOutputStreamOperator<T> filter(
+            FilterFunction<T> filter, HashMap<String, Object> description) {
         return transform("Filter", getType(), new StreamFilter<>(clean(filter), description));
     }
 

@@ -30,36 +30,37 @@ public class StreamFilter<IN> extends AbstractUdfStreamOperator<IN, FilterFuncti
         implements OneInputStreamOperator<IN, IN> {
 
     private static final long serialVersionUID = 1L;
-    //Flink-Observation: added streamMonitor and executionConfig
+    // Flink-Observation: added streamMonitor and executionConfig
     private StreamMonitor streamMonitor;
     ExecutionConfig executionConfig;
 
-    //Flink-Observation: init StreamFilter without description to preserve compatibility
+    // Flink-Observation: init StreamFilter without description to preserve compatibility
     public StreamFilter(FilterFunction<IN> filterFunction) {
         super(filterFunction);
         chainingStrategy = ChainingStrategy.ALWAYS;
-        //Flink-Observation: init streamMonitor
+        // Flink-Observation: init streamMonitor
         streamMonitor = new StreamMonitor(null, this);
     }
-    //Flink-Observation: init StreamFilter with description
+
+    // Flink-Observation: init StreamFilter with description
     public StreamFilter(FilterFunction<IN> filterFunction, HashMap<String, Object> description) {
         super(filterFunction);
         chainingStrategy = ChainingStrategy.ALWAYS;
-        //Flink-Observation: init streamMonitor
+        // Flink-Observation: init streamMonitor
         streamMonitor = new StreamMonitor(description, this);
     }
 
     @Override
     public void processElement(StreamRecord<IN> element) throws Exception {
-        //Flink-Observation: set executionConfig
+        // Flink-Observation: set executionConfig
         if (this.executionConfig == null) {
             this.executionConfig = getExecutionConfig();
         }
-        //Flink-Observation: report input and execution config
+        // Flink-Observation: report input and execution config
         streamMonitor.reportInput(element.getValue(), this.executionConfig);
         if (userFunction.filter(element.getValue())) {
             output.collect(element);
-            //Flink-Observation: report output to StreamMonitor
+            // Flink-Observation: report output to StreamMonitor
             streamMonitor.reportOutput(element.getValue());
         }
     }

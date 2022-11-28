@@ -33,8 +33,8 @@ import java.io.Serializable;
 import java.util.Map;
 
 /**
- * Flink-Observation: StreamMonitorMongoClient can be used as a static place to hold an instance of Mongo to connect to
- * the PlanGeneratorFlink database.
+ * Flink-Observation: StreamMonitorMongoClient can be used as a static place to hold an instance of
+ * Mongo to connect to the PlanGeneratorFlink database.
  */
 public class StreamMonitorMongoClient implements Serializable {
     private static final long serialVersionUID = 1L;

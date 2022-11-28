@@ -283,14 +283,17 @@ public class WindowedStream<T, K, W extends Window> {
      * @param <R> The type of the elements in the resulting stream, equal to the AggregateFunction's
      *     result type
      */
-    //Flink-Observation: added aggregate() function with the original parameters (without description) to stay compatible
+    // Flink-Observation: added aggregate() function with the original parameters (without
+    // description) to stay compatible
     @PublicEvolving
     public <ACC, R> SingleOutputStreamOperator<R> aggregate(AggregateFunction<T, ACC, R> function) {
         return aggregate(function, (HashMap<String, Object>) null);
     }
-    //Flink-Observation: added description to aggregate() parameters
+
+    // Flink-Observation: added description to aggregate() parameters
     @PublicEvolving
-    public <ACC, R> SingleOutputStreamOperator<R> aggregate(AggregateFunction<T, ACC, R> function, HashMap<String, Object> description) {
+    public <ACC, R> SingleOutputStreamOperator<R> aggregate(
+            AggregateFunction<T, ACC, R> function, HashMap<String, Object> description) {
         checkNotNull(function, "function");
 
         if (function instanceof RichFunction) {
@@ -321,7 +324,8 @@ public class WindowedStream<T, K, W extends Window> {
      * @param <R> The type of the elements in the resulting stream, equal to the AggregateFunction's
      *     result type
      */
-    //Flink-Observation: added aggregate() function with the original parameters (without description) to stay compatible
+    // Flink-Observation: added aggregate() function with the original parameters (without
+    // description) to stay compatible
     @PublicEvolving
     public <ACC, R> SingleOutputStreamOperator<R> aggregate(
             AggregateFunction<T, ACC, R> function,
@@ -329,7 +333,8 @@ public class WindowedStream<T, K, W extends Window> {
             TypeInformation<R> resultType) {
         return aggregate(function, accumulatorType, resultType, null);
     }
-    //Flink-Observation: added description to aggregate() parameters
+
+    // Flink-Observation: added description to aggregate() parameters
     @PublicEvolving
     public <ACC, R> SingleOutputStreamOperator<R> aggregate(
             AggregateFunction<T, ACC, R> function,
@@ -346,7 +351,12 @@ public class WindowedStream<T, K, W extends Window> {
                     "This aggregation function cannot be a RichFunction.");
         }
 
-        return aggregate(function, new PassThroughWindowFunction<>(), accumulatorType, resultType, description);
+        return aggregate(
+                function,
+                new PassThroughWindowFunction<>(),
+                accumulatorType,
+                resultType,
+                description);
     }
 
     /**
@@ -365,16 +375,20 @@ public class WindowedStream<T, K, W extends Window> {
      * @param <R> The type of the elements in the resulting stream, equal to the WindowFunction's
      *     result type
      */
-    //Flink-Observation: added aggregate() function with the original parameters (without description) to stay compatible
+    // Flink-Observation: added aggregate() function with the original parameters (without
+    // description) to stay compatible
     @PublicEvolving
     public <ACC, V, R> SingleOutputStreamOperator<R> aggregate(
             AggregateFunction<T, ACC, V> aggFunction, WindowFunction<V, R, K, W> windowFunction) {
         return aggregate(aggFunction, windowFunction, null);
     }
-    //Flink-Observation: added description to aggregate() parameters
+
+    // Flink-Observation: added description to aggregate() parameters
     @PublicEvolving
     public <ACC, V, R> SingleOutputStreamOperator<R> aggregate(
-            AggregateFunction<T, ACC, V> aggFunction, WindowFunction<V, R, K, W> windowFunction, HashMap<String, Object> description) {
+            AggregateFunction<T, ACC, V> aggFunction,
+            WindowFunction<V, R, K, W> windowFunction,
+            HashMap<String, Object> description) {
 
         checkNotNull(aggFunction, "aggFunction");
         checkNotNull(windowFunction, "windowFunction");
@@ -411,7 +425,8 @@ public class WindowedStream<T, K, W extends Window> {
      * @param <R> The type of the elements in the resulting stream, equal to the WindowFunction's
      *     result type
      */
-    //Flink-Observation: added aggregate() function with the original parameters (without description) to stay compatible
+    // Flink-Observation: added aggregate() function with the original parameters (without
+    // description) to stay compatible
     @PublicEvolving
     public <ACC, V, R> SingleOutputStreamOperator<R> aggregate(
             AggregateFunction<T, ACC, V> aggregateFunction,
@@ -420,7 +435,8 @@ public class WindowedStream<T, K, W extends Window> {
             TypeInformation<R> resultType) {
         return aggregate(aggregateFunction, windowFunction, accumulatorType, resultType, null);
     }
-    //Flink-Observation: added description to aggregate() parameters
+
+    // Flink-Observation: added description to aggregate() parameters
     @PublicEvolving
     public <ACC, V, R> SingleOutputStreamOperator<R> aggregate(
             AggregateFunction<T, ACC, V> aggregateFunction,
@@ -469,14 +485,16 @@ public class WindowedStream<T, K, W extends Window> {
      * @param <R> The type of the elements in the resulting stream, equal to the WindowFunction's
      *     result type
      */
-    //Flink-Observation: added aggregate() function with the original parameters (without description) to stay compatible
+    // Flink-Observation: added aggregate() function with the original parameters (without
+    // description) to stay compatible
     @PublicEvolving
     public <ACC, V, R> SingleOutputStreamOperator<R> aggregate(
             AggregateFunction<T, ACC, V> aggFunction,
             ProcessWindowFunction<V, R, K, W> windowFunction) {
         return aggregate(aggFunction, windowFunction, null);
     }
-    //Flink-Observation: added description to aggregate() parameters
+
+    // Flink-Observation: added description to aggregate() parameters
     @PublicEvolving
     public <ACC, V, R> SingleOutputStreamOperator<R> aggregate(
             AggregateFunction<T, ACC, V> aggFunction,
@@ -497,7 +515,13 @@ public class WindowedStream<T, K, W extends Window> {
         TypeInformation<R> resultType =
                 getProcessWindowFunctionReturnType(windowFunction, aggResultType, null);
 
-        return aggregate(aggFunction, windowFunction, accumulatorType, aggResultType, resultType, description);
+        return aggregate(
+                aggFunction,
+                windowFunction,
+                accumulatorType,
+                aggResultType,
+                resultType,
+                description);
     }
 
     private static <IN, OUT, KEY> TypeInformation<OUT> getWindowFunctionReturnType(
@@ -540,7 +564,8 @@ public class WindowedStream<T, K, W extends Window> {
      * @param <R> The type of the elements in the resulting stream, equal to the WindowFunction's
      *     result type
      */
-    //Flink-Observation: added aggregate() function with the original parameters (without description) to stay compatible
+    // Flink-Observation: added aggregate() function with the original parameters (without
+    // description) to stay compatible
     @PublicEvolving
     public <ACC, V, R> SingleOutputStreamOperator<R> aggregate(
             AggregateFunction<T, ACC, V> aggregateFunction,
@@ -548,9 +573,16 @@ public class WindowedStream<T, K, W extends Window> {
             TypeInformation<ACC> accumulatorType,
             TypeInformation<V> aggregateResultType,
             TypeInformation<R> resultType) {
-        return aggregate(aggregateFunction, windowFunction, accumulatorType, aggregateResultType, resultType, null);
+        return aggregate(
+                aggregateFunction,
+                windowFunction,
+                accumulatorType,
+                aggregateResultType,
+                resultType,
+                null);
     }
-    //Flink-Observation: added description to aggregate() parameters
+
+    // Flink-Observation: added description to aggregate() parameters
     @PublicEvolving
     public <ACC, V, R> SingleOutputStreamOperator<R> aggregate(
             AggregateFunction<T, ACC, V> aggregateFunction,

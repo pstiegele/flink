@@ -28,7 +28,6 @@ import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.metrics.MetricGroup;
 import org.apache.flink.runtime.state.internal.InternalListState;
 import org.apache.flink.streaming.api.operators.InternalTimer;
-import org.apache.flink.streaming.api.operators.StreamMonitor;
 import org.apache.flink.streaming.api.windowing.assigners.MergingWindowAssigner;
 import org.apache.flink.streaming.api.windowing.assigners.WindowAssigner;
 import org.apache.flink.streaming.api.windowing.evictors.Evictor;
@@ -82,7 +81,8 @@ public class EvictingWindowOperator<K, IN, OUT, W extends Window>
     private transient InternalListState<K, W, StreamRecord<IN>> evictingWindowState;
 
     // ------------------------------------------------------------------------
-    //Flink-Observation: added EvictingWindowOperator function with the original parameters (without description) to stay compatible
+    // Flink-Observation: added EvictingWindowOperator function with the original parameters
+    // (without description) to stay compatible
     public EvictingWindowOperator(
             WindowAssigner<? super IN, W> windowAssigner,
             TypeSerializer<W> windowSerializer,
@@ -94,9 +94,21 @@ public class EvictingWindowOperator<K, IN, OUT, W extends Window>
             Evictor<? super IN, ? super W> evictor,
             long allowedLateness,
             OutputTag<IN> lateDataOutputTag) {
-        this(windowAssigner, windowSerializer, keySelector, keySerializer, windowStateDescriptor, windowFunction, trigger, evictor, allowedLateness, lateDataOutputTag, null);
+        this(
+                windowAssigner,
+                windowSerializer,
+                keySelector,
+                keySerializer,
+                windowStateDescriptor,
+                windowFunction,
+                trigger,
+                evictor,
+                allowedLateness,
+                lateDataOutputTag,
+                null);
     }
-    //Flink-Observation: added description to EvictingWindowOperator parameters
+
+    // Flink-Observation: added description to EvictingWindowOperator parameters
     public EvictingWindowOperator(
             WindowAssigner<? super IN, W> windowAssigner,
             TypeSerializer<W> windowSerializer,
@@ -128,7 +140,7 @@ public class EvictingWindowOperator<K, IN, OUT, W extends Window>
 
     @Override
     public void processElement(StreamRecord<IN> element) throws Exception {
-        //Flink-Observation: report input of window
+        // Flink-Observation: report input of window
         try {
             this.streamMonitor.reportInput(element.getValue(), getExecutionConfig());
         } catch (Exception ignored) {
@@ -397,14 +409,15 @@ public class EvictingWindowOperator<K, IN, OUT, W extends Window>
             throws Exception {
         timestampedCollector.setAbsoluteTimestamp(window.maxTimestamp());
 
-        //Flink-Observation: report window length and output
-        //TODO: needs to be checked if functional
+        // Flink-Observation: report window length and output
+        // TODO: needs to be checked if functional
         try {
-            this.streamMonitor.reportWindowLength(windowState);
+            this.streamMonitor.reportWindowLength(contents);
             if (this.description != null) {
                 this.streamMonitor.reportOutput(contents);
             }
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+        }
 
         // Work around type system restrictions...
         FluentIterable<TimestampedValue<IN>> recordsWithTimestamp =

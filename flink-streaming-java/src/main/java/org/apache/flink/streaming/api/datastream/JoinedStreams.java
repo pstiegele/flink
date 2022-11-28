@@ -321,12 +321,15 @@ public class JoinedStreams<T1, T2> {
          * parallelism. Due to binary backwards compatibility, this cannot be altered. Use the
          * {@link #with(JoinFunction)} method to set an operator-specific parallelism.
          */
-        //Flink-Observation: added apply() function with the original parameters (without description) to stay compatible
+        // Flink-Observation: added apply() function with the original parameters (without
+        // description) to stay compatible
         public <T> DataStream<T> apply(JoinFunction<T1, T2, T> function) {
             return apply(function, (HashMap<String, Object>) null);
         }
-        //Flink-Observation: added description to apply() parameters
-        public <T> DataStream<T> apply(JoinFunction<T1, T2, T> function, HashMap<String, Object> description) {
+
+        // Flink-Observation: added description to apply() parameters
+        public <T> DataStream<T> apply(
+                JoinFunction<T1, T2, T> function, HashMap<String, Object> description) {
             TypeInformation<T> resultType =
                     TypeExtractor.getBinaryOperatorReturnType(
                             function,
@@ -457,14 +460,18 @@ public class JoinedStreams<T1, T2> {
          * {@link #with(JoinFunction, TypeInformation)}, method to set an operator-specific
          * parallelism.
          */
-        //Flink-Observation: added apply() function with the original parameters (without description) to stay compatible
+        // Flink-Observation: added apply() function with the original parameters (without
+        // description) to stay compatible
         public <T> DataStream<T> apply(
                 JoinFunction<T1, T2, T> function, TypeInformation<T> resultType) {
             return apply(function, resultType, null);
         }
-        //Flink-Observation: added description to apply() parameters
+
+        // Flink-Observation: added description to apply() parameters
         public <T> DataStream<T> apply(
-                JoinFunction<T1, T2, T> function, TypeInformation<T> resultType, HashMap<String, Object> description) {
+                JoinFunction<T1, T2, T> function,
+                TypeInformation<T> resultType,
+                HashMap<String, Object> description) {
             // clean the closure
             function = input1.getExecutionEnvironment().clean(function);
 
@@ -477,7 +484,8 @@ public class JoinedStreams<T1, T2> {
                             .evictor(evictor)
                             .allowedLateness(allowedLateness);
 
-            return coGroupedWindowedStream.apply(new JoinCoGroupFunction<>(function, description), resultType);
+            return coGroupedWindowedStream.apply(
+                    new JoinCoGroupFunction<>(function, description), resultType);
         }
 
         /**
@@ -514,51 +522,57 @@ public class JoinedStreams<T1, T2> {
     // ------------------------------------------------------------------------
 
     /** CoGroup function that does a nested-loop join to get the join result. */
-    //Flink-Observation: JoinCoGroupFunction is made public to be able to grab StreamMonitor from JoinedStream to the WindowOperator
+    // Flink-Observation: JoinCoGroupFunction is made public to be able to grab StreamMonitor from
+    // JoinedStream to the WindowOperator
     public static class JoinCoGroupFunction<T1, T2, T>
             extends WrappingFunction<JoinFunction<T1, T2, T>>
             implements CoGroupFunction<T1, T2, T> {
         private static final long serialVersionUID = 1L;
-        //Flink-Observation: added StreamMonitor to JoinCoGroup to observe joins
+        // Flink-Observation: added StreamMonitor to JoinCoGroup to observe joins
         public final StreamMonitor<WrappingFunction<JoinFunction<T1, T2, T>>> streamMonitor;
-        //Flink-Observation: added ExecutionConfig
+        // Flink-Observation: added ExecutionConfig
         ExecutionConfig executionConfig;
 
         public JoinCoGroupFunction(JoinFunction<T1, T2, T> wrappedFunction) {
             super(wrappedFunction);
-            //Flink-Observation: init StreamMonitor with null value because the constructor without description has been used
+            // Flink-Observation: init StreamMonitor with null value because the constructor without
+            // description has been used
             streamMonitor = new StreamMonitor<>(null, this);
         }
-        //Flink-Observation: added description to JoinCoGroupFunction parameters
-        public JoinCoGroupFunction(JoinFunction<T1, T2, T> wrappedFunction, HashMap<String, Object> description) {
+
+        // Flink-Observation: added description to JoinCoGroupFunction parameters
+        public JoinCoGroupFunction(
+                JoinFunction<T1, T2, T> wrappedFunction, HashMap<String, Object> description) {
             super(wrappedFunction);
-            //Flink-Observation: init StreamMonitor with description
+            // Flink-Observation: init StreamMonitor with description
             streamMonitor = new StreamMonitor<>(description, this);
         }
 
         @Override
         public void coGroup(Iterable<T1> first, Iterable<T2> second, Collector<T> out)
                 throws Exception {
-            //Flink-Observation: get executionConfig
+            // Flink-Observation: get executionConfig
             if (this.executionConfig == null) {
                 this.executionConfig = getRuntimeContext().getExecutionConfig();
             }
-            //Flink-Observation: get size of first & second tuple iterable
+            // Flink-Observation: get size of first & second tuple iterable
             int firstSize = ((ArrayList<Tuple>) first).size();
             int secondSize = ((ArrayList<Tuple>) second).size();
             int joinPartners = 0;
             for (T1 val1 : first) {
-                //Flink-Observation: inputs of "left" size could be reported here, but they already get reported in the windowOperator
+                // Flink-Observation: inputs of "left" size could be reported here, but they already
+                // get reported in the windowOperator
                 for (T2 val2 : second) {
                     T output = wrappedFunction.join(val1, val2);
-                    //Flink-Observation: inputs of "right" size could be reported here, but they already get reported in the windowOperator
-                    //Flink-Observation: report output of join
+                    // Flink-Observation: inputs of "right" size could be reported here, but they
+                    // already get reported in the windowOperator
+                    // Flink-Observation: report output of join
                     streamMonitor.reportOutput(output);
                     joinPartners++;
                     out.collect(output);
                 }
             }
-            //Flink-Observation: report resulting join selectivity
+            // Flink-Observation: report resulting join selectivity
             streamMonitor.reportJoinSelectivity(firstSize, secondSize, joinPartners);
         }
     }

@@ -38,12 +38,12 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Flink-Observation: This class is entirely new and added to the storm sources. The StreamMonitor is attached to the
- * processor nodes that are used in the Stream API. It is called for every incoming and outgoing
- * event and keeps track of the data characteristics (like tuple width, selectivities, etc.) As no
- * shutdown hooks can be reveiced here when shutting down the topology, the measurement has a
- * defined length It starts when the first tuple arrives. At the end, the data characteristics are
- * written into the logs per operator.
+ * Flink-Observation: This class is entirely new and added to the storm sources. The StreamMonitor
+ * is attached to the processor nodes that are used in the Stream API. It is called for every
+ * incoming and outgoing event and keeps track of the data characteristics (like tuple width,
+ * selectivities, etc.) As no shutdown hooks can be reveiced here when shutting down the topology,
+ * the measurement has a defined length It starts when the first tuple arrives. At the end, the data
+ * characteristics are written into the logs per operator.
  */
 public class StreamMonitor<T> implements Serializable {
 
@@ -74,7 +74,7 @@ public class StreamMonitor<T> implements Serializable {
     private ExecutionConfig config;
 
     public StreamMonitor(HashMap<String, Object> description, T operator) {
-        if(description == null){
+        if (description == null) {
             description = new HashMap<>();
         }
         this.description = description;
@@ -283,10 +283,10 @@ public class StreamMonitor<T> implements Serializable {
     private HashMap<String, Object> addHardwareMetrics(HashMap<String, Object> description) {
         SystemInfo si = new SystemInfo();
         HardwareAbstractionLayer hal = si.getHardware();
-        // description.put("totalMemory", hal.getMemory().getTotal());
-        // description.put("maxCPUFreq", hal.getProcessor().getMaxFreq());
-        // description.put(
-        //        "avgCPULoad", hal.getProcessor().getSystemCpuLoadBetweenTicks(prevTicks) * 100);
+        description.put("totalMemory", hal.getMemory().getTotal());
+        description.put("maxCPUFreq", hal.getProcessor().getMaxFreq());
+        description.put(
+                "avgCPULoad", hal.getProcessor().getSystemCpuLoadBetweenTicks(prevTicks) * 100);
         return description;
     }
 
